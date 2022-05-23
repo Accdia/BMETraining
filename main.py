@@ -6,27 +6,41 @@ import tkinter as tk
 import tkinter.filedialog
 import tkinter.messagebox
 
+from threading import Timer
+
+from PySide6 import QtCharts
 from PySide6.QtWidgets import QApplication
 from PySide6.QtQml import QQmlApplicationEngine
-from PySide6.QtCore import Qt, QObject, Slot
+from PySide6.QtCore import Qt, QObject, Slot, QPointF, Signal, QTimer
 
 import PCT
 
 
 class Control(QObject):
+    cuffPressureRes = Signal(str, arguments=['getCuffPressure'])
+    nbpMethodRes = Signal(str, arguments=['getNbpMethod'])
+    pressureRes = Signal(str, arguments=['getPressure'])
+    meanPressureRes = Signal(str, arguments=['getMeanPressure'])
+    nbpRateRes = Signal(str, arguments=['getNbpRate'])
+
+    tempSen1Res = Signal(str, arguments=['getTempSen1'])
+    tempSen2Res = Signal(str, arguments=['getTempSen2'])
+    temp1Res = Signal(str, arguments=['getT1'])
+    temp2Res = Signal(str, arguments=['getT2'])
+
     def __init__(self):
         super().__init__()
 
-        self.pct_data_read = False
+        self.data_count = 0
+        self.timer = QTimer(self)
         self.pct_data = None
         self.path_open = None
         self.path_save = None
+        self.data_array = []
+        self.count = 0
         self.pct = PCT.PCT()
-        self.split_data = PCT.PCTData()
 
-    # @Slot()
-    # def get_ECG1_wave(self):
-    #     return self.split_data.ECG1_wave
+        self.timer.timeout.connect(self.data_process)
 
     @Slot()
     def join_hex(self, data_high, data_low):
@@ -36,118 +50,169 @@ class Control(QObject):
     def about_page(self):
         tkinter.messagebox.showinfo('About', 'Copyright (c) 2022 Arnold Chow, All rights reserved')
 
+    @Slot(QtCharts.QXYSeries)
+    def update_series(self, series, dat):
+        series.replace(dat)
+
+    @Slot(str)
+    def set_cuff_pressure(self, arg):
+        self.cuffPressureRes.emit(arg)
+
+    @Slot(str)
+    def set_nbp_method(self, arg):
+        self.nbpMethodRes.emit(arg)
+
+    @Slot(str)
+    def set_pressure(self, arg):
+        self.pressureRes.emit(arg)
+
+    @Slot(str)
+    def set_mean_pressure(self, arg):
+        self.meanPressureRes.emit(arg)
+
+    @Slot(str)
+    def set_nbp_rate(self, arg):
+        self.nbpRateRes.emit(arg)
+
+    @Slot(str)
+    def set_temperature_sensor1(self, arg):
+        self.tempSen1Res.emit(arg)
+
+    @Slot(str)
+    def set_temperature_sensor2(self, arg):
+        self.tempSen2Res.emit(arg)
+
+    @Slot(str)
+    def set_t1(self, arg):
+        self.temp1Res.emit(arg)
+
+    @Slot(str)
+    def set_t2(self, arg):
+        self.temp2Res.emit(arg)
+
     @Slot()
     def data_process(self):
-        for index, row in self.pct_data.iterrows():
-            arr = self.pct_data.loc[index].values
-            arr = list(map(int, arr))
+        arr = self.data_array[self.count]
 
-            if arr[0] == 0x10:
-                if arr[1] == 0x02:
-                    data_type = "DAT_EEG_WAVE"
-                    ECG1_wave = self.join_hex(arr[2], arr[3])
-                    ECG2_wave = self.join_hex(arr[4], arr[5])
-                    ECG_status = arr[6]
+        if arr[0] == 0x10:
+            if arr[1] == 0x02:
+                data_type = "DAT_EEG_WAVE"
+                ECG1_wave = self.join_hex(arr[2], arr[3])
+                ECG2_wave = self.join_hex(arr[4], arr[5])
+                ECG_status = arr[6]
 
-                    self.split_data.ecg.ECG1_wave.append(ECG1_wave)
-                    self.split_data.ecg.ECG2_wave.append(ECG2_wave)
-                    self.split_data.ecg.ECG_status.append(ECG_status)
-                if arr[1] == 0x03:
-                    data_type = "DAT_EEG_LEAD"
-                    lead_info = arr[2]
-                    overload_warning = arr[3]
+                # self.split_data.ecg.ECG1_wave.append(ECG1_wave)
+                # self.split_data.ecg.ECG2_wave.append(ECG2_wave)
+                # self.split_data.ecg.ECG_status.append(ECG_status)
+            if arr[1] == 0x03:
+                data_type = "DAT_EEG_LEAD"
+                lead_info = arr[2]
+                overload_warning = arr[3]
 
-                    self.split_data.ecg.lead_info.append(lead_info)
-                    self.split_data.ecg.overload_warning.append(overload_warning)
-                if arr[1] == 0x04:
-                    data_type = "DAT_EEG_HR"
-                    heart_rate = self.join_hex(arr[2], arr[3])
+                # self.split_data.ecg.lead_info.append(lead_info)
+                # self.split_data.ecg.overload_warning.append(overload_warning)
+            if arr[1] == 0x04:
+                data_type = "DAT_EEG_HR"
+                heart_rate = self.join_hex(arr[2], arr[3])
 
-                    self.split_data.ecg.heart_rate.append(heart_rate)
+                # self.split_data.ecg.heart_rate.append(heart_rate)
 
-            if arr[0] == 0x11:
-                if arr[1] == 0x02:
-                    data_type = "DAT_RESP_WAVE"
-                    respiration_wave_data1 = arr[2]
-                    respiration_wave_data2 = arr[3]
-                    respiration_wave_data3 = arr[4]
-                    respiration_wave_data4 = arr[5]
-                    respiration_wave_data5 = arr[6]
+        if arr[0] == 0x11:
+            if arr[1] == 0x02:
+                data_type = "DAT_RESP_WAVE"
+                respiration_wave_data1 = arr[2]
+                respiration_wave_data2 = arr[3]
+                respiration_wave_data3 = arr[4]
+                respiration_wave_data4 = arr[5]
+                respiration_wave_data5 = arr[6]
 
-                    i = 2
-                    while i < 7:
-                        self.split_data.resp.respiration_wave_data.append(arr[i])
-                        i += 1
-                if arr[1] == 0x03:
-                    data_type = "DAT_RESP_LEAD"
-                    respiration_rate = self.join_hex(arr[2], arr[3])
-                    self.split_data.resp.respiration_rate.append(respiration_rate)
+                # i = 2
+                # while i < 7:
+                #     self.split_data.resp.respiration_wave_data.append(arr[i])
+                #     i += 1
+            if arr[1] == 0x03:
+                data_type = "DAT_RESP_LEAD"
+                respiration_rate = self.join_hex(arr[2], arr[3])
 
-            if arr[0] == 0x12:
-                if arr[1] == 0x02:
-                    data_type = "DAT_TEMP_DATA"
-                    temperature_sensor_status = arr[2]
-                    temperature_channel1 = self.join_hex(arr[3], arr[4])
-                    temperature_channel2 = self.join_hex(arr[5], arr[6])
+                # self.split_data.resp.respiration_rate.append(respiration_rate)
 
-                    self.split_data.temp.temperature_sensor_status.append(temperature_sensor_status)
-                    self.split_data.temp.temperature_channel1.append(temperature_channel1)
-                    self.split_data.temp.temperature_channel2.append(temperature_channel2)
+        if arr[0] == 0x12:
+            if arr[1] == 0x02:
+                data_type = "DAT_TEMP_DATA"
+                temperature_sensor_status = arr[2]
+                temperature_channel1 = self.join_hex(arr[3], arr[4]) / 10.0
+                temperature_channel2 = self.join_hex(arr[5], arr[6]) / 10.0
 
-            if arr[0] == 0x13:
-                if arr[1] == 0x02:
-                    data_type = "DAT_SPO2_WAVE"
-                    o2_wave_data1 = arr[2]
-                    o2_wave_data2 = arr[3]
-                    o2_wave_data3 = arr[4]
-                    o2_wave_data4 = arr[5]
-                    o2_wave_data5 = arr[6]
-                    o2_measure_status = arr[7]
+                if temperature_sensor_status == 0x0:
+                    self.set_temperature_sensor1("T1 Connected")
+                    self.set_temperature_sensor2("T2 Connected")
+                self.set_t1(str(temperature_channel1))
+                self.set_t2(str(temperature_channel2))
 
-                    i = 2
-                    while i < 7:
-                        self.split_data.spo2.o2_wave_data.append(arr[i])
-                        i += 1
-                    self.split_data.spo2.o2_measure_status.append(o2_measure_status)
-                if arr[1] == 0x03:
-                    data_type = "DAT_SPO2_DATA"
-                    o2_saturate_info = arr[2]
-                    pulse_rate = self.join_hex(arr[3], arr[4])
-                    o2_saturate_data = arr[5]
+        if arr[0] == 0x13:
+            if arr[1] == 0x02:
+                data_type = "DAT_SPO2_WAVE"
+                o2_wave_data1 = arr[2]
+                o2_wave_data2 = arr[3]
+                o2_wave_data3 = arr[4]
+                o2_wave_data4 = arr[5]
+                o2_wave_data5 = arr[6]
+                o2_measure_status = arr[7]
 
-                    self.split_data.spo2.o2_saturate_info.append(o2_saturate_info)
-                    self.split_data.spo2.pulse_rate.append(pulse_rate)
-                    self.split_data.spo2.o2_saturate_data.append(o2_saturate_data)
+                # i = 2
+                # while i < 7:
+                #     self.split_data.spo2.o2_wave_data.append(arr[i])
+                #     i += 1
+                # self.split_data.spo2.o2_measure_status.append(o2_measure_status)
+            if arr[1] == 0x03:
+                data_type = "DAT_SPO2_DATA"
+                o2_saturate_info = arr[2]
+                pulse_rate = self.join_hex(arr[3], arr[4])
+                o2_saturate_data = arr[5]
 
-            if arr[0] == 0x14:
-                if arr[1] == 0x02:
-                    data_type = "DAT_NBP_CUFPRE"
-                    cuff_pressure = self.join_hex(arr[2], arr[3])
-                    cuff_type_error = arr[4]
-                    measure_type = arr[5]
+                # self.split_data.spo2.o2_saturate_info.append(o2_saturate_info)
+                # self.split_data.spo2.pulse_rate.append(pulse_rate)
+                # self.split_data.spo2.o2_saturate_data.append(o2_saturate_data)
 
-                    self.split_data.nbp.cuff_pressure.append(cuff_pressure)
-                    self.split_data.nbp.cuff_type_error.append(cuff_type_error)
-                    self.split_data.nbp.measure_type.append(measure_type)
-                if arr[1] == 0x03:
-                    data_type = "DAT_NBP_END"
-                    measure_type = arr[2]
+        if arr[0] == 0x14:
+            if arr[1] == 0x02:
+                data_type = "DAT_NBP_CUFPRE"
+                cuff_pressure = self.join_hex(arr[2], arr[3])
+                cuff_type_error = arr[4]
+                measure_type = arr[5]
 
-                    # self.split_data.nbp.measure_type.append(measure_type)
-                if arr[1] == 0x04:
-                    data_type = "DAT_NBP_RSLT1"
-                    systolic_pressure = self.join_hex(arr[2], arr[3])
-                    diastolic_pressure = self.join_hex(arr[4], arr[5])
-                    mean_artery_pressure = self.join_hex(arr[6], arr[7])
+                self.set_cuff_pressure(str(cuff_pressure))
+                if measure_type == 0x01:
+                    self.set_nbp_method("Manual")
 
-                    self.split_data.nbp.systolic_pressure.append(systolic_pressure)
-                    self.split_data.nbp.diastolic_pressure.append(diastolic_pressure)
-                    self.split_data.nbp.mean_artery_pressure.append(mean_artery_pressure)
-                if arr[1] == 0x05:
-                    data_type = "DAT_NBP_RSLT2"
-                    pulse_rate = self.join_hex(arr[2], arr[3])
+            if arr[1] == 0x03:
+                data_type = "DAT_NBP_END"
+                measure_type = arr[2]
 
-                    self.split_data.nbp.pulse_rate.append(pulse_rate)
+                if measure_type == 0x01:
+                    self.set_nbp_method("Manual")
+
+            if arr[1] == 0x04:
+                data_type = "DAT_NBP_RSLT1"
+                systolic_pressure = self.join_hex(arr[2], arr[3])
+                diastolic_pressure = self.join_hex(arr[4], arr[5])
+                mean_pressure = self.join_hex(arr[6], arr[7])
+
+                pressure = str(systolic_pressure) + r"/" + str(diastolic_pressure)
+                self.set_pressure(pressure)
+                self.set_mean_pressure(str(mean_pressure))
+
+            if arr[1] == 0x05:
+                data_type = "DAT_NBP_RSLT2"
+                pulse_rate = self.join_hex(arr[2], arr[3])
+
+                self.set_nbp_rate(str(pulse_rate))
+
+        self.count += 1
+        if self.count >= self.data_count:
+            self.timer.stop()
+            self.count = 0
+            tk.messagebox.showinfo('Message', "Data Processing Complete!")
 
     @Slot()
     def open_file(self):
@@ -161,8 +226,12 @@ class Control(QObject):
                 tkinter.messagebox.showerror('Error', 'This is neither a packed PCT CSV nor'
                                                       'an unpacked PCT CSV!')
         except ValueError:
-            self.pct_data_read = True
-            self.data_process()
+            for index, row in self.pct_data.iterrows():
+                arr = self.pct_data.loc[index].values
+                arr = list(map(int, arr))
+                self.data_array.append(arr)
+            self.data_count = len(self.pct_data)
+            self.timer.start(50)
 
     @Slot()
     def save_file(self):
